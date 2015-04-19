@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include <string.h>
 
 int imageWidth = 280;
 int imageHeight = 192;
