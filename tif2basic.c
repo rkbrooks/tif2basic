@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdbool.h>
 
 int imageWidth = 280;
 int imageHeight = 192;
@@ -7,60 +6,76 @@ int imageHeight = 192;
 int main(int argc, char *argv[]) {
   
   char *filename = argv[1];
+  unsigned char imageData[imageWidth * imageHeight];
   
   if (!filename) {
     printf("TIF to Apple ][ BASIC\nUsage: ./tif2basic image.tif\n\nPlease have your image cropped to 280x192px, indexed color mode (2 colors -- black and white), and saved as a TIF with no compression, pixels ordered per-channel, and a byte order of Macintosh.\n");
     return 1;
   }
   
-  unsigned char fileSig[4]; // Used to check if input is a TIF
-  
   // Grab the input file
   FILE *fp;
   fp = fopen(filename, "rb");
-  fread(fileSig, sizeof(fileSig), 1, fp); // read 10 bytes to our buffer
   
-  // Check if this is a TIF image in little-endian format
-  unsigned char tifSig[4] = {0x4D, 0x4D, 0x00, 0x2A};
-  bool fileSigMatch = true; // Will spoil if something doesn't match
+  // Our first check should be the filesize. If it's a perfect size for
+  // our width * height, then we can assume this is already the perfect
+  // format, and rip raw byte values.
+  unsigned int filesize;
+  fseek(fp, 0, SEEK_END);
+  filesize = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
   
-  for (int i = 0; i < sizeof(tifSig); i++) {
-    if (tifSig[i] != fileSig[i]) {
-      fileSigMatch = false;
-    }
-  }
-  
-  if (!fileSigMatch) {
-    printf("Please only use TIF files with this program.\n");
-    return 1;
-  }
-  
-  // If this runs, then the above checks out. Let's read in the file
-  // data.
-  unsigned char imageBuffer[100000]; // Enough to hold everything
-  fread(imageBuffer, sizeof(imageBuffer), 1, fp);
-  
-  // Now let's search for the 'end of data' string -- I've noticed it
-  // is always 00 03 A0 when exporting from Photoshop CS4, so I'm just
-  // going to assume that.
-  unsigned int iEndOfImageData;
-  unsigned char testbyte, nextbyte;
-  for (unsigned int byteNum = 0; byteNum < (sizeof(imageBuffer) - 1); byteNum++) {
-    testbyte = imageBuffer[byteNum];
-    nextbyte = imageBuffer[byteNum + 1];
+  if (filesize == imageWidth * imageHeight) {
+    // Must be the raw pixel data, so let's pull the bytes out into the
+    // imageData array.
+    fread(imageData, sizeof(imageData), 1, fp);
+  } else {
+    // This could be a TIF file. Let's check...
     
-    if (testbyte == 0x03 && nextbyte == 0xA0) {
-      // Found it
-      iEndOfImageData = byteNum - 2; // One for 0x00, one more for data
-      break;
-    }
-  }
+    unsigned char fileSig[4]; // Used to check if input is a TIF
+    fread(fileSig, sizeof(fileSig), 1, fp); // read 10 bytes to our buffer
   
-  // Time to get the image data. We know the index of the last byte of
-  // image data, so let's start there and work backwards.
-  unsigned char imageData[imageWidth * imageHeight];
-  for (unsigned int byteNum = 0; byteNum < sizeof(imageData); byteNum++) {
-    imageData[sizeof(imageData) - 1 - byteNum] = imageBuffer[iEndOfImageData - byteNum];
+    // Check if this is a TIF image in little-endian format
+    unsigned char tifSig[4] = {0x4D, 0x4D, 0x00, 0x2A};
+    unsigned int fileSigMatch = 1; // Will spoil if something doesn't match
+  
+    for (int i = 0; i < sizeof(tifSig); i++) {
+      if (tifSig[i] != fileSig[i]) {
+        fileSigMatch = 0;
+      }
+    }
+  
+    if (!fileSigMatch) {
+      printf("Please only use TIF files with this program.\n");
+      return 1;
+    }
+  
+    // If this runs, then the above checks out. Let's read in the file
+    // data.
+    unsigned char imageBuffer[100000]; // Enough to hold everything
+    fread(imageBuffer, sizeof(imageBuffer), 1, fp);
+  
+    // Now let's search for the 'end of data' string -- I've noticed it
+    // is always 00 03 A0 when exporting from Photoshop CS4, so I'm just
+    // going to assume that.
+    unsigned int iEndOfImageData;
+    unsigned char testbyte, nextbyte;
+    for (unsigned int byteNum = 0; byteNum < (sizeof(imageBuffer) - 1); byteNum++) {
+      testbyte = imageBuffer[byteNum];
+      nextbyte = imageBuffer[byteNum + 1];
+    
+      if (testbyte == 0x03 && nextbyte == 0xA0) {
+        // Found it
+        iEndOfImageData = byteNum - 2; // One for 0x00, one more for data
+        break;
+      }
+    }
+  
+    // Time to get the image data. We know the index of the last byte of
+    // image data, so let's start there and work backwards.
+    for (unsigned int byteNum = 0; byteNum < sizeof(imageData); byteNum++) {
+      imageData[sizeof(imageData) - 1 - byteNum] = imageBuffer[iEndOfImageData - byteNum];
+    }
   }
   
   // Now that we have the image data, let's make the BASIC program!
@@ -76,6 +91,12 @@ int main(int argc, char *argv[]) {
     int blockNum;
     int block[18];
     
+    // We should set up a pixel threshold, to distinguish between Apple
+    // II white and black pixels. Here, I'm setting the threshold to
+    // 0x00 so anything that isn't 'black' is considered 'white'.
+    unsigned char pixelThreshold = 0x01;
+    unsigned char pixelValue;
+    
     // Get the first 17 blocks (of 16 pixels)
     for (blockNum = 0; blockNum < 17; blockNum++) {
       float blockAsNumber = 0;
@@ -83,9 +104,9 @@ int main(int argc, char *argv[]) {
       for (int pixelNum = 15; pixelNum >= 0; pixelNum--) {
         int imagePixelNum = linePixelStart + (16 * blockNum) + pixelNum;
         
-        bool isWhitePixel = imageData[imagePixelNum];
+        pixelValue = imageData[imagePixelNum];
         
-        if (isWhitePixel) {
+        if (pixelThreshold <= pixelValue) {
           blockAsNumber += 0.5;
         }
         
@@ -100,9 +121,9 @@ int main(int argc, char *argv[]) {
     for (int pixelNum = 7; pixelNum >= 0; pixelNum--) {
       int imagePixelNum = linePixelStart + (16 * blockNum) + pixelNum;
       
-      bool isWhitePixel = imageData[imagePixelNum];
+      pixelValue = imageData[imagePixelNum];
       
-      if (isWhitePixel) {
+      if (pixelThreshold <= pixelValue) {
         blockAsNumber += 0.5;
       }
       
@@ -118,7 +139,7 @@ int main(int argc, char *argv[]) {
         printf("%d,", block[i]);
       } else {
         printf("%d\n", block[i]);
-      } 
+      }
     }
     
     basicLineNumber += 10;
