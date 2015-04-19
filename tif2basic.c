@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     }
     
     // Get the 18th block (of 8 pixels)
-    int blockAsNumber = 0;
+    float blockAsNumber = 0;
     for (int pixelNum = 7; pixelNum >= 0; pixelNum--) {
       int imagePixelNum = linePixelStart + (16 * blockNum) + pixelNum;
       
