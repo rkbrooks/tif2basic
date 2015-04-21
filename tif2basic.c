@@ -1,5 +1,5 @@
 #include <stdio.h>
-
+#define MAXSIZE 100000
 int imageWidth = 280;
 int imageHeight = 192;
 
@@ -7,9 +7,11 @@ int main(int argc, char *argv[]) {
   
   char *filename = argv[1];
   unsigned char imageData[imageWidth * imageHeight];
+  long int filesize;
+
   
-  if (!filename) {
-    printf("TIF to Apple ][ BASIC\nUsage: ./tif2basic image.tif\n\nPlease have your image cropped to 280x192px, indexed color mode (2 colors -- black and white), and saved as a TIF with no compression, pixels ordered per-channel, and a byte order of Macintosh.\n");
+  if (!filename || argc!=2) {
+    printf("TIF to Applesoft\nUsage: ./tif2basic image.tif\n\nPlease have your image cropped to 280x192px, indexed color mode (2 colors -- black and white), and saved as a TIF with no compression, pixels ordered per-channel, and a byte order of Macintosh.\n");
     return 1;
   }
   
@@ -20,7 +22,6 @@ int main(int argc, char *argv[]) {
   // Our first check should be the filesize. If it's a perfect size for
   // our width * height, then we can assume this is already the perfect
   // format, and rip raw byte values.
-  unsigned int filesize;
   fseek(fp, 0, SEEK_END);
   filesize = ftell(fp);
   fseek(fp, 0, SEEK_SET);
@@ -39,7 +40,7 @@ int main(int argc, char *argv[]) {
     unsigned char tifSig[4] = {0x4D, 0x4D, 0x00, 0x2A};
     unsigned int fileSigMatch = 1; // Will spoil if something doesn't match
   
-    for (int i = 0; i < sizeof(tifSig); i++) {
+    for (unsigned long i = 0; i < sizeof(tifSig); i++) {
       if (tifSig[i] != fileSig[i]) {
         fileSigMatch = 0;
       }
@@ -52,7 +53,7 @@ int main(int argc, char *argv[]) {
   
     // If this runs, then the above checks out. Let's read in the file
     // data.
-    unsigned char imageBuffer[100000]; // Enough to hold everything
+    unsigned char imageBuffer[MAXSIZE]; // Enough to hold everything
     fread(imageBuffer, sizeof(imageBuffer), 1, fp);
   
     // Now let's search for the 'end of data' string -- I've noticed it
